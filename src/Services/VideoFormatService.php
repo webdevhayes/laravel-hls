@@ -129,6 +129,9 @@ final class VideoFormatService
             } elseif ($gpuType === 'apple') {
                 $this->debugLog("🔍 Apple Silicon detected, creating Apple format...");
                 return $this->createAppleFormat($bitrate, $resolution);
+            } elseif ($gpuType === 'intel') {
+                $this->debugLog("🔍 Intel GPU detected, creating Intel VAAPI format...");
+                return $this->createIntelFormat($bitrate, $resolution);
             } else {
                 $this->debugLog('⚠️ GPU acceleration enabled but no compatible GPU found. Falling back to CPU.', 'warning');
             }
@@ -242,6 +245,40 @@ final class VideoFormatService
     }
 
     /**
+     * Create Intel GPU format for video encoding using VAAPI.
+     */
+    private function createIntelFormat(int $bitrate, string $resolution): X264
+    {
+        $this->debugLog("💻 Creating Intel VAAPI format with:");
+        $this->debugLog("   - Bitrate: {$bitrate}k");
+        $this->debugLog("   - Resolution: {$resolution}");
+        $this->debugLog("   - Encoder: h264_vaapi");
+        $this->debugLog("   - Hardware acceleration: VAAPI");
+
+        $format = new X264('aac', 'h264_vaapi'); // Use h264_vaapi codec
+        $format->setKiloBitrate($bitrate);
+        $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
+
+        $additionalParams = [
+            '-hwaccel', 'vaapi',
+            '-hwaccel_output_format', 'vaapi',
+            '-vf', 'scale_vaapi='.$this->renameResolution($resolution),
+            '-c:v', 'h264_vaapi',
+            '-profile:v', 'main',
+            '-b:v', $bitrate.'k',
+            '-maxrate', $bitrate.'k',
+            '-bufsize', ($bitrate * 2).'k',
+            '-sc_threshold', '0',
+            '-g', '48',
+        ];
+
+        $format->setAdditionalParameters($additionalParams);
+
+        $this->debugLog("✅ Intel VAAPI format created successfully");
+        return $format;
+    }
+
+    /**
      * Create CPU format for video encoding.
      */
     private function createCPUFormat(int $bitrate, string $resolution): X264
@@ -308,7 +345,8 @@ final class VideoFormatService
     {
         $params = $format->getAdditionalParameters();
         return (in_array('-c:v', $params) && in_array('h264_nvenc', $params)) ||
-               (in_array('-c:v', $params) && in_array('h264_videotoolbox', $params));
+               (in_array('-c:v', $params) && in_array('h264_videotoolbox', $params)) ||
+               (in_array('-c:v', $params) && in_array('h264_vaapi', $params));
     }
 
     /**

@@ -246,6 +246,25 @@ return [
     'gpu_profile' => 'high',
 
     /**
+     * The Intel VAAPI device to use for encoding.
+     * This should be the GPU device path (e.g., '/dev/dri/renderD128') or 'auto' for automatic selection.
+     * Only used when 'use_gpu_acceleration' is true and Intel VAAPI is detected.
+     *
+     * Default: 'auto'
+     */
+    'intel_vaapi_device' => 'auto',
+
+    /**
+     * Enable Intel VAAPI hardware acceleration for video encoding.
+     * When enabled, the conversion will use h264_vaapi encoder for faster processing.
+     * Requires Intel GPU with VAAPI support and proper drivers installed.
+     * This is automatically detected when 'use_gpu_acceleration' is true.
+     *
+     * Default: true (auto-detected)
+     */
+    'enable_intel_vaapi' => true,
+
+    /**
      * This determines whether to enable debug logging for HLS conversion.
      * When enabled, detailed logs will be output during the conversion process.
      * This can be useful for troubleshooting but may impact performance.

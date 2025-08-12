@@ -14,6 +14,7 @@ final class GPUDetectionService
     private const GPU_TYPES = [
         'APPLE' => 'apple',
         'NVIDIA' => 'nvidia',
+        'INTEL' => 'intel',
         'CPU' => 'cpu'
     ];
 
@@ -42,6 +43,10 @@ final class GPUDetectionService
 
         if ($this->hasNvidiaGPU($encoders)) {
             return self::GPU_TYPES['NVIDIA'];
+        }
+
+        if ($this->hasIntelGPU($encoders)) {
+            return self::GPU_TYPES['INTEL'];
         }
 
         $this->debugLog("❌ No compatible GPU found. Using CPU.", 'warning');
@@ -114,11 +119,41 @@ final class GPUDetectionService
     }
 
     /**
+     * Check if Intel GPU (VAAPI) is available and ready for use.
+     */
+    private function hasIntelGPU(string $encoders): bool
+    {
+        if (!str_contains($encoders, 'h264_vaapi')) {
+            return false;
+        }
+
+        $this->debugLog("💻 Intel GPU (VAAPI) detected!");
+
+        if ($this->isIntelGPUReady()) {
+            $this->debugLog("✅ Intel GPU is available and ready for use!");
+            return true;
+        }
+
+        $this->debugLog("❌ Intel GPU check failed: Memory or temperature issues.", 'warning');
+        return false;
+    }
+
+    /**
      * Check if NVIDIA GPU is ready (sufficient memory and acceptable temperature).
      */
     private function isNvidiaGPUReady(): bool
     {
         return $this->hasSufficientGPUMemory() && $this->isGPUTempOK();
+    }
+
+    /**
+     * Check if Intel GPU is ready (sufficient memory and acceptable temperature).
+     */
+    private function isIntelGPUReady(): bool
+    {
+        // For Intel VAAPI, we'll assume it's ready if the encoder is available
+        // Intel GPUs typically don't have the same memory/temperature constraints as discrete GPUs
+        return true;
     }
 
     /**
@@ -170,12 +205,32 @@ final class GPUDetectionService
     }
 
     /**
+     * Check if Intel GPU temperature is within acceptable limits.
+     */
+    private function isIntelTempOK(): bool
+    {
+        // Intel integrated GPUs typically don't have temperature sensors accessible via command line
+        // We'll assume they're OK since they're designed to work within thermal limits
+        return true;
+    }
+
+    /**
      * Check if we can query NVIDIA GPU information.
      */
     private function canCheckNvidiaGPU(): bool
     {
         $this->smiPath = $this->findBinary('nvidia-smi', ['C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe']);
         return !empty($this->smiPath);
+    }
+
+    /**
+     * Check if we can query Intel GPU information.
+     */
+    private function canCheckIntelGPU(): bool
+    {
+        // Intel VAAPI doesn't have a standard monitoring tool like nvidia-smi
+        // We'll rely on FFmpeg encoder detection instead
+        return false;
     }
 
     /**
@@ -190,6 +245,16 @@ final class GPUDetectionService
     }
 
     /**
+     * Get Intel GPU free memory in MB.
+     */
+    private function getIntelGPUMemory(): ?int
+    {
+        // Intel integrated GPUs share system memory, so we can't easily query dedicated GPU memory
+        // We'll return null to indicate this information is not available
+        return null;
+    }
+
+    /**
      * Get NVIDIA GPU temperature in Celsius.
      */
     private function getNvidiaGPUTemperature(): ?int
@@ -198,6 +263,16 @@ final class GPUDetectionService
         $temp = trim($output);
 
         return is_numeric($temp) ? (int)$temp : null;
+    }
+
+    /**
+     * Get Intel GPU temperature in Celsius.
+     */
+    private function getIntelGPUTemperature(): ?int
+    {
+        // Intel integrated GPUs typically don't expose temperature via command line
+        // We'll return null to indicate this information is not available
+        return null;
     }
 
     /**

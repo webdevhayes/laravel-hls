@@ -149,6 +149,8 @@ final class ConvertToHLS
             $this->logGPUPerformance($startTime);
             if ($state->gpuType === 'apple') {
                 $this->debugLog("✅ Apple Silicon conversion completed successfully!");
+            } elseif ($state->gpuType === 'intel') {
+                $this->debugLog("✅ Intel VAAPI conversion completed successfully!");
             } else {
                 $this->debugLog("✅ NVIDIA GPU conversion completed successfully!");
             }

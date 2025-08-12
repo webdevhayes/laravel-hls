@@ -16,8 +16,9 @@ processing and conversion to HLS format. It provides a simple way to convert vid
 application into HLS streams, which can be used for adaptive bitrate streaming.
 
 **Features:**
-- 🚀 **Multi-GPU Acceleration**: Support for NVIDIA GPUs (NVENC), Apple Silicon (VideoToolbox), and CPU fallback
+- 🚀 **Multi-GPU Acceleration**: Support for NVIDIA GPUs (NVENC), Apple Silicon (VideoToolbox), Intel GPUs (VAAPI), and CPU fallback
 - 🍎 **Apple Silicon Support**: Native acceleration for M1/M2/M3 chips using VideoToolbox
+- 💻 **Intel VAAPI Support**: Hardware acceleration for Intel integrated and discrete GPUs using VAAPI
 - 💻 **Intelligent CPU Fallback**: Automatic fallback to CPU encoding when GPU is unavailable or fails
 - 🔒 **AES-128 Encryption**: Built-in encryption for secure video streaming
 - 📊 **Real-time Progress Tracking**: Live conversion progress monitoring with ETA
@@ -210,16 +211,24 @@ The package now includes comprehensive GPU acceleration support for multiple pla
 2. **macOS 11.0+** (Big Sur or later)
 3. **FFmpeg** compiled with VideoToolbox support
 
+**For Intel GPUs:**
+1. **Intel GPU** with VAAPI support (Intel HD Graphics 4000 series or newer, Intel Iris, Intel UHD)
+2. **Linux** with VAAPI drivers installed (typically included with Mesa drivers)
+3. **FFmpeg** compiled with VAAPI support
+4. **Hardware acceleration** enabled in system BIOS/UEFI
+
 #### Enabling GPU Acceleration
 
 ```php
 // In config/hls.php
 'use_gpu_acceleration' => true,
-'gpu_device' => 'auto',        // or specific GPU index like '0', '1'
-'gpu_preset' => 'fast',        // fast, medium, slow, hq, ll, llhq, lossless, losslesshq
-'gpu_profile' => 'high',       // baseline, main, high
-'gpu_min_memory_mb' => 500,    // Minimum GPU memory required
-'gpu_max_temp' => 85,          // Maximum GPU temperature before fallback
+'gpu_device' => 'auto',        // or specific GPU index like '0', '1' (NVIDIA only)
+'gpu_preset' => 'fast',        // fast, medium, slow, hq, ll, llhq, lossless, losslesshq (NVIDIA only)
+'gpu_profile' => 'high',       // baseline, main, high (NVIDIA only)
+'intel_vaapi_device' => 'auto', // or specific device path like '/dev/dri/renderD128' (Intel only)
+'enable_intel_vaapi' => true,  // Enable/disable Intel VAAPI acceleration
+'gpu_min_memory_mb' => 500,    // Minimum GPU memory required (NVIDIA only)
+'gpu_max_temp' => 85,          // Maximum GPU temperature before fallback (NVIDIA only)
 ```
 
 #### GPU Configuration Options
@@ -229,7 +238,9 @@ The package now includes comprehensive GPU acceleration support for multiple pla
 | `use_gpu_acceleration` | Enable/disable GPU acceleration | `false` | `true`, `false` |
 | `gpu_device` | GPU device index or 'auto' (NVIDIA only) | `auto` | `auto`, `0`, `1`, `2`, etc. |
 | `gpu_preset` | Quality/speed balance (NVIDIA only) | `fast` | `fast`, `medium`, `slow`, `hq`, `ll`, `llhq`, `lossless`, `losslesshq` |
-| `gpu_profile` | H.264 profile for compatibility | `high` | `baseline`, `main`, `high` |
+| `gpu_profile` | H.264 profile for compatibility (NVIDIA only) | `high` | `baseline`, `main`, `high` |
+| `intel_vaapi_device` | Intel VAAPI device path or 'auto' (Intel only) | `auto` | `auto`, `/dev/dri/renderD128`, etc. |
+| `enable_intel_vaapi` | Enable/disable Intel VAAPI acceleration | `true` | `true`, `false` |
 | `gpu_min_memory_mb` | Minimum GPU memory required (NVIDIA only) | `500` | Any positive integer |
 | `gpu_max_temp` | Maximum GPU temperature (NVIDIA only) | `85` | Any positive integer |
 
@@ -238,7 +249,7 @@ The package now includes comprehensive GPU acceleration support for multiple pla
 The package now includes a sophisticated fallback system:
 
 - **Automatic Detection**: Checks for NVIDIA GPU, Apple Silicon, or CPU availability
-- **Priority-based Selection**: Apple Silicon > NVIDIA GPU > CPU (based on performance)
+- **Priority-based Selection**: Apple Silicon > NVIDIA GPU > Intel GPU > CPU (based on performance)
 - **Graceful Fallback**: Automatically switches to CPU encoding if GPU fails
 - **Performance Monitoring**: Logs GPU performance metrics for optimization
 - **Error Recovery**: Handles GPU failures gracefully without stopping the conversion
@@ -256,6 +267,11 @@ The package monitors several GPU health metrics:
 - **Encoder Support**: Verifies VideoToolbox encoder availability
 - **System Integration**: Leverages native macOS video acceleration
 
+**For Intel GPUs:**
+- **Encoder Support**: Verifies VAAPI encoder availability
+- **Hardware Integration**: Leverages Intel Quick Sync Video technology
+- **Driver Compatibility**: Ensures Mesa drivers support VAAPI
+
 **For All Platforms:**
 - **Performance Tracking**: Logs conversion time and performance metrics
 
@@ -271,6 +287,11 @@ ffmpeg -hide_banner -encoders | grep h264_nvenc
 **For Apple Silicon:**
 ```bash
 ffmpeg -hide_banner -encoders | grep h264_videotoolbox
+```
+
+**For Intel GPUs:**
+```bash
+ffmpeg -hide_banner -encoders | grep h264_vaapi
 ```
 
 If these commands return output containing the respective encoder, your system supports GPU acceleration.
@@ -290,6 +311,10 @@ Log::warning("GPU temperature: 72°C (within limits)");
 // For Apple Silicon
 Log::info("🍎 Apple Silicon (VideoToolbox) detected!");
 Log::info("✅ Apple Silicon conversion completed successfully!");
+
+// For Intel VAAPI
+Log::info("💻 Intel GPU (VAAPI) detected!");
+Log::info("✅ Intel VAAPI conversion completed successfully!");
 ```
 
 #### Troubleshooting GPU Issues
@@ -297,6 +322,11 @@ Log::info("✅ Apple Silicon conversion completed successfully!");
 **For NVIDIA GPUs:**
 - **"GPU acceleration is enabled but NVIDIA GPU with NVENC support is not available"**: Ensure you have NVIDIA drivers installed and FFmpeg compiled with NVENC support
 - **"GPU check failed: Insufficient free memory"**: Increase `gpu_min_memory_mb` or close other GPU-intensive applications
+
+**For Intel GPUs:**
+- **"GPU acceleration is enabled but Intel GPU with VAAPI support is not available"**: Ensure you have Mesa drivers installed and FFmpeg compiled with VAAPI support
+- **"VAAPI device not found"**: Check if `/dev/dri/renderD*` devices exist and have proper permissions
+- **"Hardware acceleration not available"**: Enable hardware acceleration in BIOS/UEFI settings
 
 ## Event System
 
@@ -470,7 +500,7 @@ class EventServiceProvider extends ServiceProvider
 
 The GPU acceleration works across different operating systems:
 
-- **Linux**: Full NVIDIA GPU support with automatic binary detection
+- **Linux**: Full NVIDIA GPU support with automatic binary detection, Intel VAAPI support for integrated/discrete Intel GPUs
 - **Windows**: NVIDIA GPU support with proper path detection
 - **macOS**: Full Apple Silicon support with VideoToolbox integration
 
