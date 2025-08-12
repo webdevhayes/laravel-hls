@@ -272,9 +272,25 @@ final class VideoFormatService
         $format->setKiloBitrate($bitrate);
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
 
-        // Add VAAPI-specific parameters with proper format conversion
+        // Set initial parameters for input-level VAAPI options
+        $initialParams = [];
+
+        // Add VAAPI device specification if configured
+        $vaapiDevice = config('hls.intel_vaapi_device', 'auto');
+        if ($vaapiDevice !== 'auto') {
+            $initialParams[] = '-vaapi_device';
+            $initialParams[] = $vaapiDevice;
+        }
+
+        // Add hardware acceleration parameters (these are input-level options)
+        $initialParams[] = '-hwaccel';
+        $initialParams[] = 'vaapi';
+        $initialParams[] = '-hwaccel_output_format';
+        $initialParams[] = 'vaapi';
+
+        // Set additional parameters for output-level options
         $additionalParams = [
-            '-vf', 'format=nv12,hwupload=vaapi=0,scale_vaapi='.$this->renameResolution($resolution),
+            '-vf', 'format=nv12,hwupload,scale_vaapi='.$this->renameResolution($resolution).':format=nv12',
             '-profile:v', 'main',
             '-b:v', $bitrate.'k',
             '-maxrate', $bitrate.'k',
@@ -284,6 +300,11 @@ final class VideoFormatService
         ];
 
         $format->setAdditionalParameters($additionalParams);
+
+        // Set initial parameters for input-level options
+        if (!empty($initialParams)) {
+            $format->setInitialParameters($initialParams);
+        }
 
         $this->debugLog("✅ Intel VAAPI format created successfully");
         return $format;
