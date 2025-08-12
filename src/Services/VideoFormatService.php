@@ -267,8 +267,6 @@ final class VideoFormatService
 
         // Add VAAPI-specific parameters
         $additionalParams = [
-            '-hwaccel', 'vaapi',
-            '-hwaccel_output_format', 'vaapi',
             '-vf', 'scale_vaapi='.$this->renameResolution($resolution),
             '-profile:v', 'main',
             '-b:v', $bitrate.'k',
