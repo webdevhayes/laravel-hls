@@ -7,7 +7,7 @@ namespace AchyutN\LaravelHLS\Services;
 use AchyutN\LaravelHLS\Traits\DebugLoggable;
 use Exception;
 use FFMpeg\Format\Video\X264;
-use App\FFMpeg\Formats\H264_VAAPI;
+use AchyutN\LaravelHLS\FFMpeg\Formats\H264_VAAPI;
 
 final class VideoFormatService
 {
