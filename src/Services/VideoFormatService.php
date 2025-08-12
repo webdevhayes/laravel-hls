@@ -274,7 +274,7 @@ final class VideoFormatService
 
         // Add VAAPI-specific parameters with proper format conversion
         $additionalParams = [
-            '-vf', 'format=nv12,hwupload,scale_vaapi='.$this->renameResolution($resolution),
+            '-vf', 'format=nv12,hwupload=vaapi=0,scale_vaapi='.$this->renameResolution($resolution),
             '-profile:v', 'main',
             '-b:v', $bitrate.'k',
             '-maxrate', $bitrate.'k',
