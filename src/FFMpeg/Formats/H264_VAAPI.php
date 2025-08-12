@@ -1,44 +1,92 @@
 <?php
 
-namespace App\FFMpeg\Formats;
+declare(strict_types=1);
+
+/*
+ * This file is part of PHP-FFmpeg.
+ *
+ * (c) Alchemy <info@alchemy.fr>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+namespace AchyutN\LaravelHLS\FFMpeg\Formats;
 
 use FFMpeg\Format\Video\DefaultVideo;
 
-class H264_VAAPI extends DefaultVideo
+/**
+ * The X264 video format.
+ */
+final class H264_VAAPI extends DefaultVideo
 {
+    /** @var bool */
+    private $bframesSupport = true;
+
+    /** @var int */
+    private $passes = 2;
+
     public function __construct($audioCodec = 'copy')
     {
         $this->setAudioCodec($audioCodec);
     }
 
     /**
-     * We borrow this from the X264 class to allow for flexible
-     * audio encoding alongside our hardware-accelerated video.
+     * {@inheritDoc}
      */
-    public function getAvailableAudioCodecs(): array
+    public function supportBFrames()
+    {
+        return $this->bframesSupport;
+    }
+
+    /**
+     * @return H264_VAAPI
+     */
+    public function setBFramesSupport($support)
+    {
+        $this->bframesSupport = $support;
+
+        return $this;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getAvailableAudioCodecs()
     {
         return ['copy', 'aac', 'libvo_aacenc', 'libfaac', 'libmp3lame', 'libfdk_aac'];
     }
 
-    public function getAvailableVideoCodecs(): array
+    /**
+     * {@inheritDoc}
+     */
+    public function getAvailableVideoCodecs()
     {
         return ['h264_vaapi'];
     }
 
     /**
-     * Hardware encoders generally do not use the same multi-pass
-     * system as software encoders. We'll stick to a single pass.
+     * @return H264_VAAPI
      */
-    public function getPasses(): int
+    public function setPasses($passes)
     {
-        return 1;
+        $this->passes = $passes;
+
+        return $this;
     }
 
     /**
-     * This ensures video dimensions are divisible by 2,
-     * which is a requirement for the H.264 codec.
+     * {@inheritDoc}
      */
-    public function getModulus(): int
+    public function getPasses()
+    {
+        return $this->getKiloBitrate() === 0 ? 1 : $this->passes;
+    }
+
+    /**
+     * @return int
+     */
+    public function getModulus()
     {
         return 2;
     }
