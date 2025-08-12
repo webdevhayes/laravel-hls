@@ -51,6 +51,16 @@ final class VideoFormatService
         $this->debugLog("📊 Processing " . count($lowerResolutions) . " resolutions: " . implode(', ', array_keys($lowerResolutions)));
         $this->debugLog("📹 Original video resolution: {$videoInfo['resolution']}, bitrate: {$videoInfo['bitrate']}k");
 
+        // For hardware acceleration, we need to create a single format with filter_complex
+        if ($conversionState->useGpu && !$conversionState->isRetry) {
+            $gpuType = $gpuService->detectBestGPU();
+            if ($gpuType === 'intel') {
+                $this->debugLog("💻 Intel VAAPI detected, creating unified hardware format...");
+                return $this->createUnifiedIntelFormat($lowerResolutions, $videoInfo, $conversionState);
+            }
+        }
+
+        // Fall back to individual formats for CPU or other GPU types
         $formats = [];
         foreach ($lowerResolutions as $resolution => $res) {
             $formats[] = $this->createFormatForResolution($resolution, $res, $conversionState, $gpuService);
@@ -280,6 +290,59 @@ final class VideoFormatService
 
         $this->debugLog("✅ Intel VAAPI format created successfully");
         return $format;
+    }
+
+        /**
+     * Create Intel VAAPI formats for all resolutions using filter_complex.
+     */
+    private function createUnifiedIntelFormat(array $resolutions, array $videoInfo, object $conversionState): array
+    {
+        $this->debugLog("💻 Creating Intel VAAPI formats for all resolutions...");
+
+        $formats = [];
+        $resolutionIndex = 0;
+
+        foreach ($resolutions as $resolutionName => $resolution) {
+            $bitrate = config('hls.bitrates')[$resolutionName] ?? self::DEFAULT_BITRATE;
+
+            // Create a format for each resolution
+            $format = new H264_VAAPI('aac');
+            $format->setKiloBitrate($bitrate);
+            $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
+
+            // Set the filter_complex for this specific resolution
+            $filterComplex = $this->buildIntelFilterComplexForResolution($resolution, $resolutionIndex);
+
+            $format->setAdditionalParameters([
+                '-filter_complex', $filterComplex,
+                '-profile:v', 'main',
+                '-sc_threshold', '0',
+                '-g', '48',
+            ]);
+
+            $formats[] = $format;
+            $resolutionIndex++;
+        }
+
+        $this->debugLog("✅ Created " . count($formats) . " Intel VAAPI formats with filter_complex");
+        return $formats;
+    }
+
+        /**
+     * Build the filter_complex string for a single Intel VAAPI resolution.
+     */
+    private function buildIntelFilterComplexForResolution(string $resolution, int $resolutionIndex): string
+    {
+        $res = $this->renameResolution($resolution);
+
+        // Create the filter chain for this specific resolution
+        $filterChain = "format=nv12,hwupload,scale_vaapi={$res}:format=nv12";
+
+        // Create the filter with a unique label
+        $filterComplex = "[0:v]{$filterChain}[v{$resolutionIndex}]";
+
+        $this->debugLog("🔧 Built filter_complex for resolution {$resolution}: {$filterComplex}");
+        return $filterComplex;
     }
 
     /**
