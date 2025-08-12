@@ -107,7 +107,20 @@ final class GPUDetectionService
             return false;
         }
 
-        $this->debugLog("🚀 NVIDIA GPU (NVENC) detected!");
+        // Check if nvidia-smi is available and can detect actual hardware
+        if (!$this->canCheckNvidiaGPU()) {
+            $this->debugLog("⚠️ h264_nvenc encoder found but nvidia-smi not available. NVIDIA hardware may not be present.", 'warning');
+            return false;
+        }
+
+        // Verify actual GPU hardware exists
+        $gpuInfo = shell_exec($this->smiPath . ' --query-gpu=name --format=csv,noheader 2>&1');
+        if (empty($gpuInfo) || str_contains($gpuInfo, 'NVIDIA-SMI has failed') || str_contains($gpuInfo, 'No devices were found')) {
+            $this->debugLog("⚠️ h264_nvenc encoder found but no NVIDIA GPU hardware detected.", 'warning');
+            return false;
+        }
+
+        $this->debugLog("🚀 NVIDIA GPU (NVENC) detected: " . trim($gpuInfo));
 
         if ($this->isNvidiaGPUReady()) {
             $this->debugLog("✅ NVIDIA GPU is available and ready for use!");
@@ -127,14 +140,27 @@ final class GPUDetectionService
             return false;
         }
 
-        $this->debugLog("💻 Intel GPU (VAAPI) detected!");
+        // Check if VAAPI device files exist (actual hardware)
+        if (!$this->canCheckIntelGPU()) {
+            $this->debugLog("⚠️ h264_vaapi encoder found but VAAPI devices not accessible. Intel GPU hardware may not be present.", 'warning');
+            return false;
+        }
+
+        // Verify actual VAAPI hardware exists
+        $vaapiDevices = glob('/dev/dri/renderD*');
+        if (empty($vaapiDevices)) {
+            $this->debugLog("⚠️ h264_vaapi encoder found but no VAAPI devices found in /dev/dri/.", 'warning');
+            return false;
+        }
+
+        $this->debugLog("💻 Intel GPU (VAAPI) detected with devices: " . implode(', ', $vaapiDevices));
 
         if ($this->isIntelGPUReady()) {
             $this->debugLog("✅ Intel GPU is available and ready for use!");
             return true;
         }
 
-        $this->debugLog("❌ Intel GPU check failed: Memory or temperature issues.", 'warning');
+        $this->debugLog("❌ Intel GPU check failed: Hardware not ready.", 'warning');
         return false;
     }
 
@@ -228,8 +254,19 @@ final class GPUDetectionService
      */
     private function canCheckIntelGPU(): bool
     {
-        // Intel VAAPI doesn't have a standard monitoring tool like nvidia-smi
-        // We'll rely on FFmpeg encoder detection instead
+        // Check if VAAPI device files exist and are accessible
+        $vaapiDevices = glob('/dev/dri/renderD*');
+        if (empty($vaapiDevices)) {
+            return false;
+        }
+
+        // Check if we can read from at least one device
+        foreach ($vaapiDevices as $device) {
+            if (is_readable($device)) {
+                return true;
+            }
+        }
+
         return false;
     }
 
