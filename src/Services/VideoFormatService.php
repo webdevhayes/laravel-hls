@@ -265,9 +265,9 @@ final class VideoFormatService
         $format->setKiloBitrate($bitrate);
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
 
-        // Add VAAPI-specific parameters
+        // Add VAAPI-specific parameters with proper format conversion
         $additionalParams = [
-            '-vf', 'scale_vaapi='.$this->renameResolution($resolution),
+            '-vf', 'format=nv12,hwupload,scale_vaapi='.$this->renameResolution($resolution).':format=nv12',
             '-profile:v', 'main',
             '-b:v', $bitrate.'k',
             '-maxrate', $bitrate.'k',
