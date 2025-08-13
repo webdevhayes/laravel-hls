@@ -7,7 +7,6 @@ namespace AchyutN\LaravelHLS\Services;
 use AchyutN\LaravelHLS\Traits\DebugLoggable;
 use Exception;
 use FFMpeg\Format\Video\X264;
-use AchyutN\LaravelHLS\FFMpeg\Formats\H264_VAAPI;
 
 final class VideoFormatService
 {
@@ -51,13 +50,6 @@ final class VideoFormatService
         $this->debugLog("📊 Processing " . count($lowerResolutions) . " resolutions: " . implode(', ', array_keys($lowerResolutions)));
         $this->debugLog("📹 Original video resolution: {$videoInfo['resolution']}, bitrate: {$videoInfo['bitrate']}k");
 
-        // For hardware acceleration, use standard formats (works for all GPU types)
-        if ($conversionState->useGpu && !$conversionState->isRetry) {
-            $gpuType = $gpuService->detectBestGPU();
-            $this->debugLog("🚀 GPU acceleration enabled: {$gpuType}");
-        }
-
-        // Fall back to individual formats for CPU or other GPU types
         $formats = [];
         foreach ($lowerResolutions as $resolution => $res) {
             $formats[] = $this->createFormatForResolution($resolution, $res, $conversionState, $gpuService);
@@ -73,7 +65,7 @@ final class VideoFormatService
     /**
      * Create a format for a specific resolution.
      */
-    private function createFormatForResolution(string $resolution, string $res, object $conversionState, GPUDetectionService $gpuService)
+    private function createFormatForResolution(string $resolution, string $res, object $conversionState, GPUDetectionService $gpuService): X264
     {
         $bitrate = config('hls.bitrates')[$resolution] ?? self::DEFAULT_BITRATE;
         $this->debugLog("🎬 Creating format for resolution: {$resolution} with bitrate: {$bitrate}k");
@@ -87,7 +79,7 @@ final class VideoFormatService
     /**
      * Track GPU usage and log format creation.
      */
-    private function trackGPUUsage($format, string $resolution, object $conversionState, GPUDetectionService $gpuService): void
+    private function trackGPUUsage(X264 $format, string $resolution, object $conversionState, GPUDetectionService $gpuService): void
     {
         if ($conversionState->useGpu && !$conversionState->isRetry && $this->isGPUFormat($format)) {
             $conversionState->wasGpuUsed = true;
@@ -107,8 +99,6 @@ final class VideoFormatService
     {
         if ($gpuType === 'apple') {
             $this->debugLog("🍎 Apple Silicon format created for resolution: {$resolution}");
-        } elseif ($gpuType === 'intel') {
-            $this->debugLog("�� Intel VAAPI format created for resolution: {$resolution}");
         } else {
             $this->debugLog("🚀 NVIDIA GPU format created for resolution: {$resolution}");
         }
@@ -117,7 +107,7 @@ final class VideoFormatService
     /**
      * Create fallback format when no resolutions are found.
      */
-    private function createFallbackFormat(array $videoInfo, object $conversionState, GPUDetectionService $gpuService)
+    private function createFallbackFormat(array $videoInfo, object $conversionState, GPUDetectionService $gpuService): X264
     {
         $this->debugLog("⚠️ No resolutions found, using original video format");
         $format = $this->createVideoFormat((int) $videoInfo['bitrate'], $videoInfo['resolution'], $conversionState, $gpuService);
@@ -128,7 +118,7 @@ final class VideoFormatService
     /**
      * Create video format based on available hardware.
      */
-    private function createVideoFormat(int $bitrate, string $resolution, object $conversionState, GPUDetectionService $gpuService)
+    private function createVideoFormat(int $bitrate, string $resolution, object $conversionState, GPUDetectionService $gpuService): X264
     {
         if ($conversionState->useGpu && !$conversionState->isRetry) {
             $gpuType = $gpuService->detectBestGPU();
@@ -139,9 +129,6 @@ final class VideoFormatService
             } elseif ($gpuType === 'apple') {
                 $this->debugLog("🔍 Apple Silicon detected, creating Apple format...");
                 return $this->createAppleFormat($bitrate, $resolution);
-            } elseif ($gpuType === 'intel') {
-                $this->debugLog("�� Intel GPU detected, creating Intel VAAPI format...");
-                return $this->createIntelFormat($bitrate, $resolution);
             } else {
                 $this->debugLog('⚠️ GPU acceleration enabled but no compatible GPU found. Falling back to CPU.', 'warning');
             }
@@ -204,7 +191,7 @@ final class VideoFormatService
     {
         $params = [
             '-vf', 'scale='.$this->renameResolution($resolution),
-            '-c:v', 'h264_nvenc',  // Override the video codec
+            '-c:v', 'h264_nvenc',
             '-preset', $gpuConfig['preset'],
             '-profile:v', $gpuConfig['profile'],
             '-rc', 'cbr',
@@ -233,12 +220,12 @@ final class VideoFormatService
         $this->debugLog("   - Quality: medium");
         $this->debugLog("   - Realtime: true");
 
-        $format = new X264('aac');
+        $format = new X264();
         $format->setKiloBitrate($bitrate);
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
         $additionalParams = [
-            '-c:v', 'h264_videotoolbox',
             '-vf', 'scale='.$this->renameResolution($resolution),
+            '-c:v', 'h264_videotoolbox',  // Override the video codec
             '-profile:v', 'main',
             '-quality', 'medium',
             '-realtime', 'true',
@@ -251,61 +238,6 @@ final class VideoFormatService
         $format->setAdditionalParameters($additionalParams);
 
         $this->debugLog("✅ Apple Silicon format created successfully");
-        return $format;
-    }
-
-    /**
-     * Create Intel GPU format for video encoding using the VPL API.
-     */
-    private function createIntelFormat(int $bitrate, string $resolution): X264
-    {
-        $this->debugLog("💻 Creating Intel VPL format with:");
-        $this->debugLog("   - Bitrate: {$bitrate}k");
-        $this->debugLog("   - Resolution: {$resolution}");
-        $this->debugLog("   - Encoder: h264_onevpl");
-
-        // Use a base format object, controlling all video parameters manually.
-        $format = new X264('aac');
-        $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
-
-        // --- Step 1: Set Initial Parameters (using VPL syntax) ---
-        $initialParams = [
-            // Create a VPL hardware device context named 'vpl_device'.
-            '-init_hw_device', 'onevpl=vpl_device',
-            // Tell FFmpeg to use this device for filtering.
-            '-filter_hw_device', 'vpl_device',
-            // Enable VPL hardware acceleration.
-            '-hwaccel', 'onevpl',
-            '-hwaccel_output_format', 'onevpl',
-        ];
-        $format->setInitialParameters($initialParams);
-
-        // --- Step 2: Set Additional Parameters (using VPL syntax) ---
-        $resolutionForFilter = $this->renameResolution($resolution);
-
-        $additionalParams = [
-            // Use the VPL hardware scaler. 'hwupload' is still needed to move
-            // the CPU-decoded frame to the GPU.
-            '-vf', "hwupload,scale_onevpl={$resolutionForFilter}",
-
-            // Set the VPL video codec.
-            '-c:v', 'h264_onevpl',
-
-            // Set a VPL-compatible preset.
-            '-preset:v', 'medium',
-
-            // Set profile and bitrate.
-            '-profile:v', 'main',
-            '-b:v', $bitrate . 'k',
-            '-maxrate', $bitrate . 'k',
-            '-bufsize', ($bitrate * 2) . 'k',
-
-            // Keyframe interval for HLS.
-            '-g', '48',
-        ];
-        $format->setAdditionalParameters($additionalParams);
-
-        $this->debugLog("✅ Intel VPL format created successfully");
         return $format;
     }
 
@@ -372,22 +304,11 @@ final class VideoFormatService
     /**
      * Check if format uses GPU encoding.
      */
-    private function isGPUFormat($format): bool
+    private function isGPUFormat(X264 $format): bool
     {
-        // Check if it's our custom H264_VAAPI class
-        if ($format instanceof H264_VAAPI) {
-            return true;
-        }
-
-        // Check X264 formats for GPU encoders
-        if ($format instanceof X264) {
-            $params = $format->getAdditionalParameters();
-            return (in_array('-c:v', $params) && in_array('h264_nvenc', $params)) ||
-                   (in_array('-c:v', $params) && in_array('h264_videotoolbox', $params)) ||
-                   (in_array('-c:v', $params) && in_array('h264_qsv', $params));
-        }
-
-        return false;
+        $params = $format->getAdditionalParameters();
+        return (in_array('-c:v', $params) && in_array('h264_nvenc', $params)) ||
+               (in_array('-c:v', $params) && in_array('h264_videotoolbox', $params));
     }
 
     /**
@@ -412,4 +333,6 @@ final class VideoFormatService
         }
         return "{$parts[0]}:{$parts[1]}";
     }
+
+
 }
