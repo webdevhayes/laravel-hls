@@ -255,45 +255,43 @@ final class VideoFormatService
     }
 
     /**
-     * Create Intel GPU format for video encoding using Quick Sync.
+     * Create Intel GPU format for video encoding using the VPL API.
      */
     private function createIntelFormat(int $bitrate, string $resolution): X264
     {
-        $this->debugLog("💻 Creating Intel Quick Sync format with:");
+        $this->debugLog("💻 Creating Intel VPL format with:");
         $this->debugLog("   - Bitrate: {$bitrate}k");
         $this->debugLog("   - Resolution: {$resolution}");
-        $this->debugLog("   - Encoder: h264_qsv");
+        $this->debugLog("   - Encoder: h264_onevpl");
 
-        // Use a base format object. We will control all video parameters manually
-        // to prevent the library from adding its own conflicting '-vcodec libx264'.
+        // Use a base format object, controlling all video parameters manually.
         $format = new X264('aac');
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
 
-        // --- Step 1: Set Initial Parameters (Before -i) ---
-        // This initializes the hardware and, crucially, links it to the filter system.
+        // --- Step 1: Set Initial Parameters (using VPL syntax) ---
         $initialParams = [
-            // Create a hardware device context named 'qsv'.
-            '-init_hw_device', 'qsv=qsv',
-            // Tell FFmpeg to use this device for filtering. THIS IS THE KEY FIX.
-            '-filter_hw_device', 'qsv',
-            // Enable hardware acceleration for decoding/frame processing.
-            '-hwaccel', 'qsv',
-            '-hwaccel_output_format', 'qsv',
+            // Create a VPL hardware device context named 'vpl_device'.
+            '-init_hw_device', 'onevpl=vpl_device',
+            // Tell FFmpeg to use this device for filtering.
+            '-filter_hw_device', 'vpl_device',
+            // Enable VPL hardware acceleration.
+            '-hwaccel', 'onevpl',
+            '-hwaccel_output_format', 'onevpl',
         ];
         $format->setInitialParameters($initialParams);
 
-        // --- Step 2: Set Additional Parameters (After -i) ---
+        // --- Step 2: Set Additional Parameters (using VPL syntax) ---
         $resolutionForFilter = $this->renameResolution($resolution);
 
         $additionalParams = [
-            // Now that the filter device is set globally, a simple hwupload
-            // and scale_qsv chain will work without extra options.
-            '-vf', "hwupload,scale_qsv={$resolutionForFilter}",
+            // Use the VPL hardware scaler. 'hwupload' is still needed to move
+            // the CPU-decoded frame to the GPU.
+            '-vf', "hwupload,scale_onevpl={$resolutionForFilter}",
 
-            // Explicitly set the QSV video codec.
-            '-c:v', 'h264_qsv',
+            // Set the VPL video codec.
+            '-c:v', 'h264_onevpl',
 
-            // Set a QSV-compatible preset.
+            // Set a VPL-compatible preset.
             '-preset:v', 'medium',
 
             // Set profile and bitrate.
@@ -307,7 +305,7 @@ final class VideoFormatService
         ];
         $format->setAdditionalParameters($additionalParams);
 
-        $this->debugLog("✅ Intel Quick Sync format created successfully");
+        $this->debugLog("✅ Intel VPL format created successfully");
         return $format;
     }
 
