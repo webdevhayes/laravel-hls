@@ -233,12 +233,12 @@ final class VideoFormatService
         $this->debugLog("   - Quality: medium");
         $this->debugLog("   - Realtime: true");
 
-        $format = new X264('aac', 'h264_videotoolbox'); // Use h264_videotoolbox codec
+        $format = new X264('aac');
         $format->setKiloBitrate($bitrate);
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
         $additionalParams = [
+            '-c:v', 'h264_videotoolbox',
             '-vf', 'scale='.$this->renameResolution($resolution),
-            // Removed redundant -c:v h264_videotoolbox since it's set in constructor
             '-profile:v', 'main',
             '-quality', 'medium',
             '-realtime', 'true',
@@ -254,59 +254,40 @@ final class VideoFormatService
         return $format;
     }
 
-    /**
-     * Create Intel GPU format for video encoding using VAAPI.
+        /**
+     * Create Intel GPU format for video encoding using Quick Sync.
      */
-    private function createIntelFormat(int $bitrate, string $resolution): H264_VAAPI
+    private function createIntelFormat(int $bitrate, string $resolution): X264
     {
-        $this->debugLog("💻 Creating Intel VAAPI format with:");
+        $this->debugLog("💻 Creating Intel Quick Sync format with:");
         $this->debugLog("   - Bitrate: {$bitrate}k");
         $this->debugLog("   - Resolution: {$resolution}");
-        $this->debugLog("   - Encoder: h264_vaapi");
-        $this->debugLog("   - Hardware acceleration: VAAPI");
+        $this->debugLog("   - Encoder: h264_qsv");
+        $this->debugLog("   - Hardware acceleration: Intel Quick Sync");
 
-        // Use your custom H264_VAAPI class
-        $format = new H264_VAAPI('aac');
+        // Use X264 format
+        $format = new X264('aac');
 
         // Set bitrate using the DefaultVideo methods
         $format->setKiloBitrate($bitrate);
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
 
-        // Set initial parameters for input-level VAAPI options
-        $initialParams = [];
-
-        // Add VAAPI device specification if configured
-        $vaapiDevice = config('hls.intel_vaapi_device', 'auto');
-        if ($vaapiDevice !== 'auto') {
-            $initialParams[] = '-vaapi_device';
-            $initialParams[] = $vaapiDevice;
-        }
-
-        // Add hardware acceleration parameters (these are input-level options)
-        $initialParams[] = '-hwaccel';
-        $initialParams[] = 'vaapi';
-        $initialParams[] = '-hwaccel_output_format';
-        $initialParams[] = 'vaapi';
-
-        // Set additional parameters for output-level options
+        // Set additional parameters for Quick Sync encoding
         $additionalParams = [
-            '-vf', 'format=nv12,hwupload,scale_vaapi='.$this->renameResolution($resolution).':format=nv12',
+            '-c:v', 'h264_qsv',  // Override to use Quick Sync encoder
+            '-vf', 'scale='.$this->renameResolution($resolution),
             '-profile:v', 'main',
             '-b:v', $bitrate.'k',
             '-maxrate', $bitrate.'k',
             '-bufsize', ($bitrate * 2).'k',
             '-sc_threshold', '0',
             '-g', '48',
+            '-preset', 'fast',
         ];
 
         $format->setAdditionalParameters($additionalParams);
 
-        // Set initial parameters for input-level options
-        if (!empty($initialParams)) {
-            $format->setInitialParameters($initialParams);
-        }
-
-        $this->debugLog("✅ Intel VAAPI format created successfully");
+        $this->debugLog("✅ Intel Quick Sync format created successfully");
         return $format;
     }
 
@@ -384,7 +365,8 @@ final class VideoFormatService
         if ($format instanceof X264) {
             $params = $format->getAdditionalParameters();
             return (in_array('-c:v', $params) && in_array('h264_nvenc', $params)) ||
-                   (in_array('-c:v', $params) && in_array('h264_videotoolbox', $params));
+                   (in_array('-c:v', $params) && in_array('h264_videotoolbox', $params)) ||
+                   (in_array('-c:v', $params) && in_array('h264_qsv', $params));
         }
 
         return false;
