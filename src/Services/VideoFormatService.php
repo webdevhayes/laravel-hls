@@ -254,7 +254,7 @@ final class VideoFormatService
         return $format;
     }
 
-        /**
+     /**
      * Create Intel GPU format for video encoding using Quick Sync.
      */
     private function createIntelFormat(int $bitrate, string $resolution): X264
@@ -263,28 +263,44 @@ final class VideoFormatService
         $this->debugLog("   - Bitrate: {$bitrate}k");
         $this->debugLog("   - Resolution: {$resolution}");
         $this->debugLog("   - Encoder: h264_qsv");
-        $this->debugLog("   - Hardware acceleration: Intel Quick Sync");
 
-        // Use X264 format
+        // Use a base format object. We will control all parameters manually.
         $format = new X264('aac');
-
-        // Set bitrate using the DefaultVideo methods
-        $format->setKiloBitrate($bitrate);
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
 
-        // Set additional parameters for Quick Sync encoding
-        $additionalParams = [
-            '-c:v', 'h264_qsv',  // Override to use Quick Sync encoder
-            '-vf', 'scale='.$this->renameResolution($resolution),
-            '-profile:v', 'main',
-            '-b:v', $bitrate.'k',
-            '-maxrate', $bitrate.'k',
-            '-bufsize', ($bitrate * 2).'k',
-            '-sc_threshold', '0',
-            '-g', '48',
-            '-preset', 'fast',
+        // --- Step 1: Set Initial Parameters (Before -i) ---
+        // This is the critical step to initialize the GPU hardware.
+        $initialParams = [
+            '-init_hw_device', 'qsv=hw',
+            '-hwaccel', 'qsv',
+            '-hwaccel_output_format', 'qsv',
         ];
+        $format->setInitialParameters($initialParams);
 
+        // --- Step 2: Set Additional Parameters (After -i) ---
+        // These parameters define the QSV encoding and scaling for this specific output.
+        $resolutionForFilter = $this->renameResolution($resolution);
+
+        $additionalParams = [
+            // Use the QSV hardware scaler for efficiency.
+            // hwupload moves the video frame to the GPU.
+            '-vf', "hwupload=extra_hw_frames=64,scale_qsv={$resolutionForFilter}",
+
+            // Explicitly set the QSV video codec.
+            '-c:v', 'h264_qsv',
+
+            // Set a QSV-compatible preset (medium is a good balance).
+            '-preset:v', 'medium',
+
+            // Set profile and bitrate for the QSV encoder.
+            '-profile:v', 'main',
+            '-b:v', $bitrate . 'k',
+            '-maxrate', $bitrate . 'k',
+            '-bufsize', ($bitrate * 2) . 'k',
+
+            // Keyframe interval for HLS.
+            '-g', '48',
+        ];
         $format->setAdditionalParameters($additionalParams);
 
         $this->debugLog("✅ Intel Quick Sync format created successfully");

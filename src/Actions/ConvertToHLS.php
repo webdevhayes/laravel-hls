@@ -13,9 +13,7 @@ use AchyutN\LaravelHLS\Events\HLSConversionCompleted;
 use AchyutN\LaravelHLS\Events\HLSConversionFailed;
 use AchyutN\LaravelHLS\Jobs\UpdateConversionProgress;
 use Exception;
-use FFMpeg\Format\Video\X264;
 use Illuminate\Database\Eloquent\Model;
-use Laravel\Prompts\Progress;
 use ProtoneMedia\LaravelFFMpeg\Support\FFMpeg;
 
 use function Laravel\Prompts\info;
