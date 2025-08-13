@@ -254,7 +254,7 @@ final class VideoFormatService
         return $format;
     }
 
-     /**
+    /**
      * Create Intel GPU format for video encoding using Quick Sync.
      */
     private function createIntelFormat(int $bitrate, string $resolution): X264
@@ -264,12 +264,11 @@ final class VideoFormatService
         $this->debugLog("   - Resolution: {$resolution}");
         $this->debugLog("   - Encoder: h264_qsv");
 
-        // Use a base format object. We will control all parameters manually.
         $format = new X264('aac');
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
 
         // --- Step 1: Set Initial Parameters (Before -i) ---
-        // This is the critical step to initialize the GPU hardware.
+        // This creates a hardware device context named 'qsv'. This is essential.
         $initialParams = [
             '-init_hw_device', 'qsv=hw',
             '-hwaccel', 'qsv',
@@ -278,21 +277,19 @@ final class VideoFormatService
         $format->setInitialParameters($initialParams);
 
         // --- Step 2: Set Additional Parameters (After -i) ---
-        // These parameters define the QSV encoding and scaling for this specific output.
         $resolutionForFilter = $this->renameResolution($resolution);
 
         $additionalParams = [
-            // Use the QSV hardware scaler for efficiency.
-            // hwupload moves the video frame to the GPU.
-            '-vf', "hwupload=extra_hw_frames=64,scale_qsv={$resolutionForFilter}",
+            // **THE FIX IS HERE**: Tell hwupload to use the 'qsv' device.
+            '-vf', "hwupload=device=qsv:extra_hw_frames=64,scale_qsv={$resolutionForFilter}",
 
             // Explicitly set the QSV video codec.
             '-c:v', 'h264_qsv',
 
-            // Set a QSV-compatible preset (medium is a good balance).
+            // Set a QSV-compatible preset.
             '-preset:v', 'medium',
 
-            // Set profile and bitrate for the QSV encoder.
+            // Set profile and bitrate.
             '-profile:v', 'main',
             '-b:v', $bitrate . 'k',
             '-maxrate', $bitrate . 'k',
