@@ -264,13 +264,19 @@ final class VideoFormatService
         $this->debugLog("   - Resolution: {$resolution}");
         $this->debugLog("   - Encoder: h264_qsv");
 
+        // Use a base format object. We will control all video parameters manually
+        // to prevent the library from adding its own conflicting '-vcodec libx264'.
         $format = new X264('aac');
         $format->setAudioKiloBitrate(self::DEFAULT_AUDIO_BITRATE);
 
         // --- Step 1: Set Initial Parameters (Before -i) ---
-        // This creates a hardware device context named 'qsv'. This is essential.
+        // This initializes the hardware and, crucially, links it to the filter system.
         $initialParams = [
-            '-init_hw_device', 'qsv=hw',
+            // Create a hardware device context named 'qsv'.
+            '-init_hw_device', 'qsv=qsv',
+            // Tell FFmpeg to use this device for filtering. THIS IS THE KEY FIX.
+            '-filter_hw_device', 'qsv',
+            // Enable hardware acceleration for decoding/frame processing.
             '-hwaccel', 'qsv',
             '-hwaccel_output_format', 'qsv',
         ];
@@ -280,8 +286,9 @@ final class VideoFormatService
         $resolutionForFilter = $this->renameResolution($resolution);
 
         $additionalParams = [
-            // **THE FIX IS HERE**: Tell hwupload to use the 'qsv' device.
-            '-vf', "hwupload=device=qsv:extra_hw_frames=64,scale_qsv={$resolutionForFilter}",
+            // Now that the filter device is set globally, a simple hwupload
+            // and scale_qsv chain will work without extra options.
+            '-vf', "hwupload,scale_qsv={$resolutionForFilter}",
 
             // Explicitly set the QSV video codec.
             '-c:v', 'h264_qsv',
