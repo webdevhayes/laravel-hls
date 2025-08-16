@@ -157,16 +157,16 @@ final class ConvertToHLS
         }
 
         // Dispatch success event
-        HLSConversionCompleted::dispatch(
-            $state->inputPath,
-            $state->outputFolder,
-            $state->model,
-            $state->wasGpuUsed,
-            $state->gpuType,
-            $conversionTime,
-            $videoInfo,
-            $state->isRetry
-        );
+//        HLSConversionCompleted::dispatch(
+//            $state->inputPath,
+//            $state->outputFolder,
+//            $state->model,
+//            $state->wasGpuUsed,
+//            $state->gpuType,
+//            $conversionTime,
+//            $videoInfo,
+//            $state->isRetry
+//        );
     }
 
     /**
