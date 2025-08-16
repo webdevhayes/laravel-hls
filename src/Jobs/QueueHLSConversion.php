@@ -11,6 +11,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use ProtoneMedia\LaravelFFMpeg\Support\FFMpeg;
 
 final class QueueHLSConversion implements ShouldQueue
 {
@@ -42,28 +44,58 @@ final class QueueHLSConversion implements ShouldQueue
      */
     public function handle(): void
     {
-        config('laravel-ffmpeg.temporary_files_encrypted_hls', config('hls.temp_hls_storage_path'));
-        config('laravel-ffmpeg.temporary_files_root', config('hls.temp_storage_path'));
+        try {
+            config('laravel-ffmpeg.temporary_files_encrypted_hls', config('hls.temp_hls_storage_path'));
+            config('laravel-ffmpeg.temporary_files_root', config('hls.temp_storage_path'));
 
-        CheckForDatabaseColumns::handle($this->model);
+            CheckForDatabaseColumns::handle($this->model);
 
-        $original_path = $this->model->getVideoPath();
-        $folderName = uuid_create();
+            $original_path = $this->model->getVideoPath();
+            $folderName = uuid_create();
 
-        ConvertToHLS::convertToHLS(
-            $original_path,
-            $folderName,
-            $this->model
-        );
+            ConvertToHLS::convertToHLS(
+                $original_path,
+                $folderName,
+                $this->model
+            );
 
-        $this->model->setHlsPath($folderName);
-        $this->model->saveQuietly();
+            $this->model->setHlsPath($folderName);
+            $this->model->saveQuietly();
 
-        if (config('hls.delete_original_file_after_conversion')) {
-            Storage::disk($this->model->getVideoDisk())->delete($original_path);
-            $this->model->setVideoPath(null);
+            if (config('hls.delete_original_file_after_conversion')) {
+                Storage::disk($this->model->getVideoDisk())->delete($original_path);
+                $this->model->setVideoPath(null);
+            }
+
+            $this->model->saveQuietly();
+        } catch (Exception $e) {
+            // Ensure cleanup happens even if the job fails
+            FFMpeg::cleanupTemporaryFiles();
+
+            Log::error('HLS conversion job failed', [
+                'model_id' => $this->model->getKey(),
+                'model_type' => get_class($this->model),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            throw $e;
         }
+    }
 
-        $this->model->saveQuietly();
+    /**
+     * Handle a job failure.
+     */
+    public function failed(Exception $exception): void
+    {
+        // Ensure cleanup happens when the job fails
+        FFMpeg::cleanupTemporaryFiles();
+
+        Log::error('HLS conversion job failed and will not be retried', [
+            'model_id' => $this->model->getKey(),
+            'model_type' => get_class($this->model),
+            'error' => $exception->getMessage(),
+            'trace' => $exception->getTraceAsString()
+        ]);
     }
 }
