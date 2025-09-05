@@ -15,6 +15,7 @@ final class VideoAnalysisService
     public function analyzeVideo(string $inputPath, Model $model): array
     {
         $media = FFMpeg::fromDisk($model->getVideoDisk())->open($inputPath);
+        ray('Analyzing video:', $inputPath, $model->getVideoDisk(), $media);
         $streamVideo = $media->getVideoStream()->getDimensions();
 
         return [
