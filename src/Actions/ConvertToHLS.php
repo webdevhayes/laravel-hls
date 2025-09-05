@@ -54,6 +54,8 @@ final class ConvertToHLS
 
         $this->logConversionStart($conversionState);
 
+        $this->debugLog("Debug Retry: {$inputPath}");
+
         try {
             $videoInfo = $this->analysisService->analyzeVideo($inputPath, $model);
             $formats = $this->formatService->createFormats($videoInfo, $conversionState, $this->gpuService);
