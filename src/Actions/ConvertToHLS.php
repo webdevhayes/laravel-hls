@@ -60,7 +60,7 @@ final class ConvertToHLS
             $this->performConversion($conversionState, $formats, $videoInfo, $startTime);
             $this->logCompletion($conversionState, $startTime, $videoInfo);
         } catch (Exception $e) {
-            $this->handleError($e, $conversionState, $videoInfo, $startTime);
+            $this->handleError($e, $conversionState, [], $startTime);
         } finally {
             FFMpeg::cleanupTemporaryFiles();
         }
